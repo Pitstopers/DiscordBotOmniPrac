@@ -40,5 +40,34 @@ async def on_ready():
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("Pong!")
 
+@bot.tree.command(
+    name="practice",
+    description="Log Prac time",
+)
+async def practice(
+    interaction: discord.Interaction,
+    hours: int,
+    minutes: int
+):
+    if hours < 0:
+        await interaction.response.send_message("Hours cannot be negative.",
+        ephemeral=True)
+        return
+    if minutes < 0 or minutes >= 60:
+        await interaction.response.send_message("Minutes must be between 0 and 59.",
+        ephemeral=True)
+        return
+    if hours == 0 and minutes == 0:
+        await interaction.response.send_message("Practice duration cannot be zero.",
+        ephemeral=True)
+        return
+    
+    total_minutes = (hours * 60) + minutes
+    await interaction.response.send_message(
+        f"Check Practice logged\n"
+        f"Player: {interaction.user.display_name}\n"
+        f"Duration: {hours}h {minutes}m\n"
+        f"Total minutes: {total_minutes}\n"
+    )
 # Start the bot
 bot.run(TOKEN)
