@@ -105,6 +105,7 @@ async def practice(
     description="TBA"
 )
 async def stats(interaction: discord.Interaction):
+
     with closing(sqlite3.connect(DB_FILE)) as conn:
         result = conn.execute(
             """
@@ -114,55 +115,58 @@ async def stats(interaction: discord.Interaction):
             FROM practice_sessions
             WHERE user_id = ?
             """,
-            (interaction.user.id,)
+            (interaction.user.id, )
         ).fetchone()
 
-    sessions, total_minutes = result
+        sessions, total_minutes = result
 
-    if sessions == 0:
+        if sessions == 0:
+            await interaction.response.send_message(
+                "You haven't logged any practice sessions yet."
+            )
+            return
+
+
         await interaction.response.send_message(
-            "You haven't logged any practice sessions yet."
-        )
-        return
-
-    await interaction.response.send_message(
         f"**Practice Stats: {interaction.user.display_name}**\n"
         f"Total Sessions: {sessions}\n"
-        f"Total Practice: {format_duration(total_minutes)}"
-    )
-
+            f"Total Practice: {format_duration(total_minutes)}"
+        )
 
 @bot.tree.command(
     name="history",
     description="TBA"
-)
-async def history(interaction: discord.Interaction):
+ )
+async def history(interaction: discord.interaction):
+
     with closing(sqlite3.connect(DB_FILE)) as conn:
         records = conn.execute(
             """
-            SELECT practice_type, duration_minutes, created_at
+            Select practice_type. duration_minutes, created_at
             FROM practice_sessions
-            WHERE user_id = ?
+            WHERE user_id =?
             ORDER BY id DESC
             LIMIT 5
             """,
             (interaction.user.id,)
         ).fetchall()
-
-    if not records:
-        await interaction.response.send_message("No Practice History Found.")
-        return
-
+    
+        if not records:
+             await interaction.response.send_message(
+                 "No Practice History Found."
+             )
+             return
+             
     message = f"**Practice History: {interaction.user.display_name}**\n"
 
     for index, record in enumerate(records, start=1):
-        practice_type, minutes, date = record
+                practice_type, minutes, date = record
 
-        message += (
-            f"{index}. **{practice_type}**\n"
-            f"Duration: {format_duration(minutes)}\n"
-            f"Date: {date} UTC\n\n"
-        )
+                message += (
+                    f"{index}. **{practice_type}**\n"
+                    f"Duration: {format_duration(minutes)}\n"
+                    f"Date: {date} UTC\n\n"
+                )
 
     await interaction.response.send_message(message)
 
@@ -218,6 +222,8 @@ async def leaderboard(interaction: discord.Interaction):
         )
 
     await interaction.response.send_message(message)
+
+setup_database()
 
 # Start the bot
 bot.run(TOKEN)
