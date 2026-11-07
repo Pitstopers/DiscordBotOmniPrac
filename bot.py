@@ -166,10 +166,6 @@ async def history(interaction: discord.Interaction):
 
     await interaction.response.send_message(message)
 
-
-setup_database()
-
-
 def format_duration(total_minutes):
     hours = total_minutes // 60
     minutes = total_minutes % 60
