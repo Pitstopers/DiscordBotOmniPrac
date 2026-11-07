@@ -8,13 +8,17 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+__pycache__/
 
 credentials.json
 service_account.json
 google_credentials.json
 token.json
 
+practice_logs.db
+
 .pytest_cache/
+bot_backup.py
 
 .DS_Store
 
