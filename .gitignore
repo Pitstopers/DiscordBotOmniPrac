@@ -19,8 +19,13 @@ practice_logs.db
 
 .pytest_cache/
 bot_backup.py
+backups/
+testfolder/
 
 .DS_Store
+.db
+
+google-service-account.json
 
 .vscode/
 .idea/
