@@ -29,7 +29,8 @@ def sync_practice_logs():
                 username, 
                 practice_type, 
                 duration_minutes, 
-                created_at
+                created_at,
+                session_details
             FROM practice_sessions
             ORDER BY id ASC
             """
@@ -85,11 +86,12 @@ def sync_practice_logs():
             "Duration (minutes)", 
             "Duration Hours",
             "Recorded At (UTC)",
-            "Practice Partners"
+            "Practice Partners",
+            "Session Notes"
         ]]
 
         for record in records:
-            session_id, user_id, username, practice_type, minutes, date = record
+            session_id, user_id, username, practice_type, minutes, date, notes = record
 
             hours = round(minutes / 60, 2)
 
@@ -116,7 +118,8 @@ def sync_practice_logs():
                 minutes,
                 hours,
                 date,
-                partner_text
+                partner_text,
+                notes
             ])
 
         # All practice session rows have now been created
@@ -132,10 +135,10 @@ def sync_practice_logs():
             )
 
         for row_number, row in enumerate(rows, start=1):
-            if len(row) != 8:
+            if len(row) != 9:
                 raise ValueError(
                     f"Row {row_number} has {len(row)} columns. "
-                    "Expected 8."
+                    "Expected 9."
                 )
 
         print("Data validation passed!")
@@ -152,17 +155,17 @@ def sync_practice_logs():
         existing_count = len(worksheet.get_all_values())
         row_count = max(existing_count, len(rows))
 
-        rows += [[""] * 8 for _ in range(row_count - len(rows))]
+        rows += [[""] * 9 for _ in range(row_count - len(rows))]
 
         worksheet.update(
             values=rows,
-            range_name=f"A1:H{row_count}",
+            range_name=f"A1:I{row_count}",
             value_input_option="RAW"
         )
 
         worksheet.freeze(rows=1)
 
-        worksheet.set_basic_filter(f"A1:H{expected_rows}")
+        worksheet.set_basic_filter(f"A1:I{expected_rows}")
         
         print("Practice logs synced to Google Sheets successfully.")
 
@@ -178,7 +181,7 @@ def sync_player_summary(records, spreadsheet):
 
     # Group all practice records by Discord User ID
     for record in records:
-        session_id, user_id, username, practice_type, minutes, date = record
+        session_id, user_id, username, practice_type, minutes, date, notes = record
 
         user_id = str(user_id)
 

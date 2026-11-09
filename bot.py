@@ -1,13 +1,15 @@
 import discord
 import sqlite3
 import asyncio
-from discord.ext import commands
+import os
+from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from pathlib import Path
 from typing import Literal
 from contextlib import closing
 from sheets_sync import sync_practice_logs
-import os
+from datetime import datetime, timezone
+from discord import app_commands
 
 # Find the .env file in the same folder as bot.py
 env_file = Path(__file__).parent / ".env"
@@ -45,6 +47,48 @@ def setup_database():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS active_stopwatches (
+                user_id INTEGAR PRIMARY KEY,
+                username TEXT NOT NULL,
+                practice_type TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                notes TEXT NOT NULL DEFAULT ''
+                )
+        """)
+        columns = [
+            column[1]
+            for column in conn.execute(
+                "PRAGMA table_info(active_stopwatches)"
+            ).fetchall()
+        ]
+        if "last_reminded_at" not in columns:
+            conn.execute(
+                """
+                ALTER TABLE active_stopwatches
+                ADD COLUMN last_reminded_at TEXT
+            """)
+
+@tasks.loop(seconds=15)
+async def stopwatch_reminder_checker():
+    with closing(sqlite3.connect(DB_FILE)) as conn:
+        with conn:
+                records = conn.execute(
+                    """
+                    SELECT user_id, started_at, last_reminded_at
+                    FROM active_stopwatches
+                """
+                ).fetchall()
+
+        for record in records:
+            user_id, started_at_text, last_reminded_at = record
+            started_at = datetime.fromisoformat(started_at_text)
+
+            current_time = datetime.now(timezone.utc)
+            elasped = current_time - started_at
+            elasped_minutes = int(elasped.total_seconds() //60 )
+            if elasped_minutes >= 1:
+                print(user_id, "needs a stopwatch notication")
 
 # Runs when the bot connects successfully
 @bot.event
@@ -52,6 +96,8 @@ async def on_ready():
     await bot.tree.sync()
     print(f"Logged in as {bot.user}")
     print("Slash Commands Synced!")
+    if not stopwatch_reminder_checker.is_running():
+        stopwatch_reminder_checker.start()
 
 @bot.tree.command(
     name="ping",
@@ -72,8 +118,9 @@ async def practice(
         "Ranked",
         "Practice",
         "1v1s",
-        "Solo"
-    ]
+        "Solo",
+        ],
+    notes: str = ""
 ):
     if hours < 0:
         await interaction.response.send_message("Hours cannot be negative.",
@@ -92,26 +139,41 @@ async def practice(
     total_minutes = (hours * 60) + minutes
 
     with sqlite3.connect(DB_FILE) as conn:
-        conn.execute(
+        cursor = conn.execute(
             """
             INSERT INTO practice_sessions 
-            (user_id, username, practice_type, duration_minutes)
-            VALUES (?, ?, ?, ?)
-        """, 
-        (
-            interaction.user.id, 
-            interaction.user.display_name, 
-            practice_type,
-            total_minutes
+            (user_id, username, practice_type, duration_minutes, session_details, interaction_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(interaction_id) DO NOTHING;
+        """,
+            (
+                interaction.user.id, 
+                interaction.user.display_name, 
+                practice_type,
+                total_minutes,
+                str(notes),
+                str(interaction.id)
+            )
         )
+        inserted_count = cursor.rowcount
+        session_id = cursor.lastrowid
+
+    if inserted_count == 0:
+        await interaction.response.send_message(
+            "Practice already recorded!",
+            ephemeral=True
         )
+        return
+
     
     await interaction.response.send_message(
+        f"**Session ID: {session_id}**\n\n"
         f"Check Practice logged\n"
         f"Player: {interaction.user.display_name}\n"
         f"Practice Type: {practice_type}\n"
         f"Duration: {hours}h {minutes}m\n"
-        f"Total minutes: {total_minutes}\n"
+        f"Total minutes: {total_minutes}\n\n"
+        f"**Notes: {notes.strip() or 'NONE**'}"
     )
     
     await update_google_sheets()
@@ -412,6 +474,148 @@ async def edit(
         )
         await update_google_sheets()
 
+stopwatch_group = app_commands.Group(
+        name="stopwatch",
+        description="StopWatch your practice"
+)
+@stopwatch_group.command(
+    name="start",
+    description="Start tracking your practice time"
+)
+async def stopwatch_start(
+    interaction: discord.Interaction,
+    practice_type: Literal[
+        "Ranked",
+        "Practice",
+        "1v1s",
+        "Solo",
+        ],
+    notes: str = ""
+):
+
+    started_at = datetime.now(timezone.utc)
+    unix_timestamp = int(started_at.timestamp())
+    started_at_text = started_at.isoformat()
+
+    with closing(sqlite3.connect(DB_FILE)) as conn:
+        with conn:
+            cursor = conn.execute(
+                """
+                INSERT OR IGNORE INTO active_stopwatches
+                (user_id, username, practice_type, started_at, notes)
+                VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                interaction.user.id,
+                interaction.user.display_name,
+                practice_type,
+                started_at_text,
+                notes.strip()
+            )
+        )
+        inserted_count = cursor.rowcount
+
+    if inserted_count == 0:
+        await interaction.response.send_message(
+            "Stopwatch already started!",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+    f"**OMNI GALAXY STOPWATCH**\n"
+    f"**Practice Started!**\n\n"
+    f"**Started:** <t:{unix_timestamp}:t>\n"
+    f"**Mode:** {practice_type}\n"
+    f"**Notes:** {notes.strip() or 'None'}",
+    ephemeral=True
+    )
+
+@stopwatch_group.command(
+    name="stop",
+    description="Stop and save your practice"
+)
+async def stopwatch_stop(interaction: discord.Interaction):
+    record = None
+    elasped_minutes = None
+    session_id = None
+
+    with closing(sqlite3.connect(DB_FILE)) as conn:
+        with conn:
+            conn.execute("BEGIN IMMEDIATE")
+            
+            record = conn.execute(
+                """
+                SELECT practice_type, started_at, notes
+                FROM active_stopwatches
+                WHERE user_id = ?
+                """,
+                (interaction.user.id,)
+            ).fetchone()
+
+            if record is not None:
+                practice_type, started_at_text, notes = record
+
+                started_at = datetime.fromisoformat(started_at_text)
+                stopped_at = datetime.now(timezone.utc)
+                unix_timestamp = int(started_at.timestamp())
+
+                elasped = stopped_at - started_at
+                elasped_minutes = int(elasped.total_seconds() // 60)
+
+                if elasped_minutes >= 1:
+                    cursor = conn.execute(
+                    """
+                    INSERT INTO practice_sessions
+                    (user_id, username, practice_type, duration_minutes, session_details, interaction_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        interaction.user.id,
+                        interaction.user.display_name,
+                        practice_type,
+                        elasped_minutes,
+                        notes,
+                        str(interaction.id)
+                    )
+                )
+                    
+                    session_id = cursor.lastrowid
+                    conn.execute(
+                        """
+                        DELETE FROM active_stopwatches
+                        WHERE user_id = ?
+                        """,
+                        (interaction.user.id,)
+                    )
+
+    if record is None:
+        await interaction.response.send_message(
+            "You don't have an active stopwatch.",
+            ephemeral=True
+        )
+        return
+    
+    if elasped_minutes < 1:
+        await interaction.response.send_message(
+            "your stopwatch hasn't reached one minute yet",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+    f"**OMNI GALAXY STOPWATCH**\n"
+    f"**Session ID: {session_id}**\n"
+    f"**Started:** <t:{unix_timestamp}:t>\n"
+    f"**No longer active!**\n\n"
+    f"**Mode:** {practice_type}\n"
+    f"**Duration** {format_duration(elasped_minutes)}\n"
+    f"**Notes:** {notes.strip() or 'None'}",
+    ephemeral=True
+    )
+    await update_google_sheets()
+bot.tree.add_command(stopwatch_group)
+
 @bot.tree.command(
     name="addpartners",
     description="Add practice partners to a session"
@@ -448,6 +652,7 @@ async def add_partners(
         ephemeral=True
     )
     print("Dropdown components:", view.children)
+    await update_google_sheets()
 
 # Setup the database when the bot starts
 setup_database()
@@ -509,7 +714,7 @@ async def add_notes(
         f"Your notes are: **{notes}**",
         ephemeral=True
     )
-
+    await update_google_sheets()
 
 @bot.tree.command(
     name="commands",
