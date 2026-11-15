@@ -37,11 +37,12 @@ bot = commands.Bot(
 
 def setup_database():
     with sqlite3.connect(DB_FILE) as conn:
+        conn.execute("PRAGMA foreign_keys = ON;")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS practice_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
-                interaction_id INTEGAR NOT NULL,
+                interaction_id TEXT NOT NULL UNIQUE,
                 username TEXT NOT NULL,
                 practice_type TEXT NOT NULL,
                 duration_minutes INTEGER NOT NULL,
@@ -50,8 +51,19 @@ def setup_database():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS practice_partners(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            partner_user_id TEXT NOT NULL,
+            UNIQUE(session_id, partner_user_id),
+            FOREIGN KEY (session_id)
+            REFERENCES practice_sessions(id)
+            ON DELETE CASCADE
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS active_stopwatches (
-                user_id INTEGAR PRIMARY KEY,
+                user_id INTEGER PRIMARY KEY,
                 username TEXT NOT NULL,
                 practice_type TEXT NOT NULL,
                 started_at TEXT NOT NULL,
@@ -222,7 +234,7 @@ async def practice(
         f"Practice Type: {practice_type}\n"
         f"Duration: {hours}h {minutes}m\n"
         f"Total minutes: {total_minutes}\n\n"
-        f"**Notes: {notes.strip() or 'NONE**'}"
+        f"**Notes:** {notes.strip() or 'NONE'}"
     )
     
     await update_google_sheets()
@@ -230,7 +242,7 @@ async def practice(
 
 @bot.tree.command(
     name="stats",
-    description="TBA"
+    description="Check your overall practice statistics"
 )
 async def stats(interaction: discord.Interaction):
 
@@ -263,7 +275,7 @@ async def stats(interaction: discord.Interaction):
 
 @bot.tree.command(
     name="history",
-    description="TBA"
+    description="Check the history of the last 10 sessions created"
  )
 async def history(interaction: discord.Interaction):
 
@@ -377,11 +389,11 @@ class PartnerSelector(discord.ui.view.View):
                     ]
                 )
 
-                await interation.response.send_message(
-                    f"Saved {len(partner_ids)} practice partners "
-                    f"for session #{self.session_id}!",
-                    ephemeral=True
-                )
+        await interation.response.send_message(
+            f"Saved {len(partner_ids)} practice partners "
+            f"for session #{self.session_id}!",
+            ephemeral=True
+            )
 @bot.tree.command(
     name="leaderboard",
     description="View the practice leaderboard"
@@ -436,6 +448,7 @@ async def leaderboard(interaction: discord.Interaction):
 )
 async def delete(interaction: discord.Interaction, session_id: int):
     with closing(sqlite3.connect(DB_FILE)) as conn:
+        conn.execute("PRAGMA foreign_keys = ON;")
         with conn:
             result = conn.execute(
                 """
