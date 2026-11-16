@@ -30,3 +30,10 @@ aws s3 cp "$BACKUP" \
     --region us-east-2
 echo "Backup uploaded to Amazon S3 successfully!"
 echo "Backup file: $BACKUP"
+
+find "$FOLDER" -maxdepth 1 -type f \
+    -name "practice_logs-*.db" \
+    -mmin +10080 \
+    -print -delete
+
+echo "Local backup retention completed!"
