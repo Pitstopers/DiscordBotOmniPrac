@@ -1,127 +1,223 @@
-OMNI Practice Tracker
+🌌 OMNI Practice Tracker
 
-A Discord-based practice management and analytics application built with Python, SQLite, and the Google Sheets API.
+A cloud-hosted Discord application for competitive sports practice tracking, session management, and performance reporting.
 
-OMNI Practice Tracker is a custom Discord application designed to help competitive esports players record practice sessions, monitor training activity, and review individual and team performance.
-
-The application combines Discord slash commands, database management, automated time tracking, and Google Sheets synchronization into a single practice-management system.
+Built with Python, discord.py, SQLite, Google Sheets API, and Amazon Web Services (AWS).
 
 Developer: Pitstopers
-Project: OMNI
-Status: Core application developed | AWS deployed
+Status: Deployed on AWS EC2
 
-Key Features
+Overview
 
-Practice Management
+OMNI Practice Tracker is a Discord application developed to help competitive esports players organize, record, and analyze their practice activity.
 
-* Log practice sessions with custom durations, categories, and notes.
-* Edit or delete previously recorded sessions.
-* Associate Discord users with practice sessions as practice partners.
-* Review individual practice history and detailed session information.
+The application supports manual practice logging, automated stopwatches, session management, individual statistics, and team leaderboards.
+
+It uses SQLite for persistent storage and integrates with Google Sheets for reporting.
+
+The application is deployed on AWS EC2 and uses Linux services, automated database backups, and cloud infrastructure monitoring.
+
+Core Features
+
+Practice Tracking
+
+* Record practice duration, categories, and notes.
+* Edit and delete previously recorded sessions.
+* Associate practice partners with individual sessions.
+* Retrieve practice history and detailed session records.
+* Validate practice durations and prevent duplicate interaction submissions.
 
 Automated Stopwatch
 
-* Start, stop, and check practice timers through Discord.
-* Save elapsed practice time automatically.
-* Receive automated reminders for extended practice sessions.
-* Confirm or correct sessions lasting eight hours or longer.
+* Start and stop practice timers using Discord slash commands.
+* Track active timers using persistent SQLite records.
+* Receive reminders for extended practice sessions.
+* Confirm or correct recorded durations for sessions lasting eight hours or longer.
 
-Analytics & Reporting
+Statistics and Reporting
 
-* View individual practice statistics.
-* Generate leaderboards based on total training time.
-* Synchronize recorded practice data with Google Sheets.
-* Retrieve session details through unique session IDs.
+* View individual training statistics.
+* Rank players by total practice duration.
+* Synchronize practice records with Google Sheets.
+* Generate spreadsheet-based player summaries.
 
-Data Integrity & Access Control
+Security and Data Integrity
 
-* SQLite database with relational tables.
-* Foreign-key relationships and duplicate-record protection.
-* Session ownership checks and role-based viewing permissions.
-* Persistent stopwatch records and transaction-based session saving.
+* Session ownership checks and role-based access.
+* SQLite unique constraints and foreign-key relationships.
+* Transaction-based database operations.
+* Environment-based credential configuration.
 
 Technology Stack
 
 Technology	Purpose
-Python	Application logic
-discord.py	Discord commands and interactions
-SQLite	Persistent data storage
-Google Sheets API	Practice data synchronization
-asyncio	Asynchronous operations
-Git & GitHub	Version control
-AWS EC2	Cloud hosting (deployment in progress)
-Ubuntu Linux	Cloud server operating system
+Python	Backend application development
+discord.py	Discord API integration
+SQLite	Relational database
+Google Sheets API / gspread	Data synchronization and reporting
+AWS EC2	Cloud compute
+Ubuntu Linux	Server operating system
+systemd	Application and scheduled task management
+Amazon S3	Off-instance database backups
+AWS IAM	Role-based permissions
+Amazon CloudWatch	EC2 health monitoring
+Amazon SNS	Email notification delivery
+Bash	Backup automation
+Git / GitHub	Version control and deployment
 
-Architecture
+System Architecture
 
-The application follows a simple backend architecture:
+flowchart TD
+    A[Discord Users] --> B[Discord API]
+    B <--> C[Python Bot on AWS EC2]
+    C <--> D[(SQLite Database)]
+    D --> E[Google Sheets Synchronization]
+    E --> F[Google Sheets Reports]
+    D --> G[SQLite Backup Script]
+    H[systemd Daily Timer] --> G
+    G --> I[(Amazon S3 Backups)]
+    J[AWS IAM Role] -.-> I
+    K[CloudWatch EC2 Health Alarm] --> L[Amazon SNS]
+    L --> M[Email Notifications]
 
-Discord User → Python Bot → SQLite Database → Google Sheets
+SQLite is the application’s primary data store. Google Sheets is used for reporting, while S3 stores independent recovery copies.
 
-Players interact with Discord slash commands. The Python application processes requests, validates information, and reads or updates the SQLite database.
+Discord Commands
 
-Practice records are also synchronized with Google Sheets for additional reporting and analysis.
+Command	Description
+/practice	Record a practice session
+/stopwatch start	Begin a stopwatch
+/stopwatch stop	Stop and save practice time
+/stopwatch status	View an active stopwatch
+/stats	View individual practice statistics
+/history	View recent practice sessions
+/leaderboard	Display practice rankings
+/session	Retrieve session details
+/editpractice	Update an existing practice session
+/deletepractice	Delete an owned session
+/addpartners	Associate partners with a session
+/addnotes	Save additional session notes
+/commands	View available commands
 
-Available Commands
+Cloud Deployment
 
-Command	Function
-/practice	Log practice time
-/stopwatch start	Start a practice timer
-/stopwatch stop	Stop and save a timer
-/stopwatch status	Check an active timer
-/stats	View personal statistics
-/history	View recent sessions
-/leaderboard	View practice rankings
-/session	View session details
-/editpractice	Modify a session
-/deletepractice	Delete a session
-/addpartners	Associate practice partners
-/addnotes	Add session notes
-/commands	List available commands
+AWS EC2
 
-Technical Challenges & Solutions
+The application runs on an Ubuntu Linux EC2 instance with a dedicated Python virtual environment.
 
-Preventing duplicate records
+Application updates are retrieved from GitHub using SSH authentication and a read-only repository deploy key.
 
-Implemented unique Discord interaction identifiers to help protect practice data from duplicate processing.
+Application Management
 
-Managing database relationships
+The bot operates as a systemd service configured to:
 
-Designed separate practice-session and partner tables using SQLite foreign keys, composite uniqueness constraints, and cascading deletion.
+* Start automatically when Ubuntu boots.
+* Restart after application process failures.
+* Run independently of an active SSH connection.
+* Provide logs through journalctl.
 
-Tracking long-running practice sessions
+Database Backups
 
-Built a stopwatch system that stores timestamps in SQLite and calculates elapsed time using UTC timestamps.
+The backup process uses a Bash script to:
 
-Integrating external services
+1. Create a timestamped SQLite snapshot.
+2. Verify database integrity.
+3. Upload the validated backup to Amazon S3.
+4. Remove local backups older than seven days following a successful upload.
 
-Connected the application to Google Sheets and implemented asynchronous synchronization so blocking API operations do not run directly on the bot’s event loop.
+A systemd timer is configured to run the backup process daily.
 
-Installation & Configuration
+A database recovery test was completed using a backup downloaded from S3.
 
-The application requires a compatible Python environment, the project dependencies, a Discord bot token, and Google Sheets API credentials.
+Cloud Security
 
-Sensitive configuration, including the Discord token and service-account credentials, should remain outside version control.
+The AWS deployment implements:
 
-The project initializes its SQLite tables when the bot starts.
+* SSH key-based server authentication.
+* Restricted SSH inbound access through an EC2 security group.
+* Private S3 storage.
+* IAM role-based S3 access with limited permissions.
+* File permissions protecting application credentials.
+* AWS CloudWatch alarms for EC2 health monitoring.
+* Amazon SNS integration for notifications.
+* AWS billing monitoring.
 
-Detailed deployment instructions will be added following cloud deployment.
+Monitoring scope: The CloudWatch alarm monitors EC2 health. Application-level Google Sheets synchronization monitoring is a possible future enhancement.
 
-Development Roadmap
+Development Setup
 
-* [x]	Core Discord slash commands
-* [x]	SQLite session management
-* [x]	Practice stopwatch and reminders
-* [x]	Google Sheets synchronization
-* [x]	Practice partners and session details
-* [x]	Fresh database initialization
-* [ ]	Complete AWS EC2 deployment
-* [ ]	Configure automatic application startup
-* [ ]	Implement cloud backup and recovery procedures
-* [ ]	Add automated application tests
+Requirements
 
-About This Project
+* Compatible Python 3 version
+* Discord application and bot token
+* Google Sheets API service-account credentials
+* Python packages listed in requirements.txt
 
-This project was developed to address practical practice-management needs within OMNI while building hands-on experience in Python backend development, databases, API integrations, version control, and cloud infrastructure.
+Install Dependencies
 
-The project is maintained and developed by Pitstopers.
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+
+Environment Configuration
+
+Create a .env file containing:
+
+DISCORD_TOKEN=your_discord_token
+GOOGLE_SHEETS_ID=your_spreadsheet_id
+
+Place the authorized Google service-account JSON file at the location expected by sheets_sync.py.
+
+Never commit production credentials or private player databases to version control.
+
+Run the Application
+
+python bot.py
+
+The application initializes missing SQLite tables during startup.
+
+Maintenance
+
+Check Application Status
+
+sudo systemctl status omni-practice
+
+View Application Logs
+
+sudo journalctl -u omni-practice -n 50 --no-pager
+
+Check Backup Schedule
+
+systemctl list-timers --all
+
+Update Application Code
+
+Production changes are developed locally, committed to GitHub, pulled onto EC2, and applied through the application service.
+
+Technical Challenges
+
+Dependency compatibility: Resolved differences between local and Ubuntu Python environments.
+
+Database integrity: Implemented unique interaction identifiers, relational constraints, and transactional operations.
+
+Persistent time tracking: Used SQLite and UTC timestamps to preserve active stopwatch sessions.
+
+Cloud reliability: Configured automatic application startup, failure restarts, database backup scheduling, and off-instance recovery.
+
+Credential management: Separated sensitive configuration from source code and used an IAM role instead of permanent AWS access keys for S3 access.
+
+Future Improvements
+
+* [ ]	Automated application-level integration tests
+* [ ]	Google Sheets synchronization failure alerts
+* [ ]	GitHub Actions deployment workflow
+* [ ]	Additional observability and monitoring
+* [ ]	Expanded practice analytics
+
+Project Purpose
+
+OMNI Practice Tracker combines esports team operations with practical software development and cloud infrastructure management.
+
+The project demonstrates hands-on experience in Python backend development, relational databases, external API integration, Linux administration, AWS deployment, application security, and disaster recovery.
+
+Developed by Pitstopers.
